@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  clickhouse_dtb:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    #entrypoint: /bin/sh
+    ports:
+      - 9000:9000
+      - 8123:8123
+      - 9009:9009
+    volumes:
+      - ./clickhouse-data:/var/lib/clickhouse
+    restart: always
+
+ 
