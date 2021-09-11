@@ -1,0 +1,86 @@
+FROM ubuntu:20.04 as builder
+ENV DEBIAN_FRONTEND noninteractive
+ENV TZ Europe/Moscow
+
+
+RUN apt-get update
+RUN apt-get install -y  gnutls-bin clang-11 wget curl git cmake python3 ninja-build build-essential tzdata lsb-release software-properties-common
+
+ENV CC clang-11
+ENV CXX clang++-11
+RUN mkdir -p src 
+WORKDIR /src
+RUN git clone --recursive https://github.com/ClickHouse/ClickHouse.git
+RUN mkdir -p build
+WORKDIR /src/build
+RUN cmake ../ClickHouse
+RUN ninja
+
+FROM ubuntu:20.04 as runner
+
+# https://clickhouse.tech/docs/en/development/developer-instruction/
+# Copy execuatable binaries from builder to runner to make it run
+COPY --from=builder /src/build/programs /usr/bin/
+
+# Guide line to start this container
+#https://github.com/ClickHouse/ClickHouse/tree/master/docker/server
+RUN apt-get update
+# see https://github.com/moby/moby/issues/4032#issuecomment-192327844
+ARG DEBIAN_FRONTEND=noninteractive
+# user/group precreated explicitly with fixed uid/gid on purpose.
+# It is especially important for rootless containers: in that case entrypoint
+# can't do chown and owners of mounted volumes should be configured externally.
+# We do that in advance at the begining of Dockerfile before any packages will be
+# installed to prevent picking those uid / gid by some unrelated software.
+# The same uid / gid (101) is used both for alpine and ubuntu.
+RUN groupadd -r clickhouse --gid=1000 \
+    && useradd -r -g clickhouse --uid=1000 --home-dir=/var/lib/clickhouse --shell=/bin/bash clickhouse \
+    && apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        apt-transport-https \
+        ca-certificates \
+        dirmngr \
+        gnupg \
+        locales \
+        wget \
+        tzdata \
+        gosu \
+        libcap2-bin \
+    #&& chmod +x /bin/gosu \
+    && clickhouse-local -q 'SELECT * FROM system.build_options' \
+    && mkdir -p /var/lib/clickhouse /var/log/clickhouse-server /etc/clickhouse-server /etc/clickhouse-client /etc/clickhouse-server/users.d \
+    && chmod ugo+Xrw -R /var/lib/clickhouse /var/log/clickhouse-server /etc/clickhouse-server /etc/clickhouse-client /etc/clickhouse-server/users.d
+
+# we need to allow "others" access to clickhouse folder, because docker container
+# can be started with arbitrary uid (openshift usecase)
+RUN locale-gen en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+ENV TZ UTC
+
+
+RUN mkdir /docker-entrypoint-initdb.d
+
+COPY docker_related_config.xml /etc/clickhouse-server/config.d/
+COPY entrypoint.sh /entrypoint.sh
+COPY config.xml /etc/clickhouse-server/config.xml
+COPY users.xml /etc/clickhouse-server/users.xml
+RUN chmod +x /entrypoint.sh 
+# 666 ==> Everyone can read, write.
+EXPOSE 9000 8123 9009
+
+#https://stackoverflow.com/questions/41935435/understanding-volume-instruction-in-dockerfile
+#it's probably a best practice to never use VOLUME. For two reasons. 
+#The first reason : We can not specify the  host path - which is a good thing 
+# because Dockerfiles should be very agnostic to the specifics of a host machine.
+# But the second reason is people might forget to use the --rm option when running the container
+#. One might remember to remove the  container but forget to remove the volume. 
+# Plus, even with the best of human memory, it might be a daunting task to figure out which of all anonymous volumes are safe to remove.
+
+# Need to mount this voulum in docker-compose to specific path in host machine to do persitant stoarage
+#VOLUME /var/lib/clickhouse
+
+ENV CLICKHOUSE_CONFIG /etc/clickhouse-server/config.xml
+
+ENTRYPOINT ["/entrypoint.sh"]

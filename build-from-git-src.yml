@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  clickhouse_from_src:
+    build:
+      context: ./dockerfile
+      dockerfile: dockerfile
+ 
+
+ 

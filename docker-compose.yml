@@ -2,16 +2,23 @@ version: "3.8"
 
 services:
   clickhouse_dtb:
-    build:
-      context: ./
-      dockerfile: Dockerfile
-    #entrypoint: /bin/sh
+    image: duonghuynhbaocr/clickhouse-arm64:21.11.1.1
     ports:
       - 9000:9000
       - 8123:8123
       - 9009:9009
+    environment:
+      #make sure the clickhouse UID and GID the same with host machine sothat they can share rw permisson on mounted volume
+      CLICKHOUSE_UID: 1001 #archive by echo "$(id -u)"
+      CLICKHOUSE_GID: 1001 #archive by echo "$(id -g)"
+    ulimits: 
+      nofile:
+        soft: "262144"
+        hard: "262144"
+
     volumes:
       - ./clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse-config:/etc/clickhouse-server
     restart: always
 
  
