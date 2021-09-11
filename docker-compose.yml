@@ -11,6 +11,8 @@ services:
       #make sure the clickhouse UID and GID the same with host machine sothat they can share rw permisson on mounted volume
       CLICKHOUSE_UID: 1001 #archive by echo "$(id -u)"
       CLICKHOUSE_GID: 1001 #archive by echo "$(id -g)"
+      CLICKHOUSE_USER: myuser
+      CLICKHOUSE_PASSWORD: thisissecrete
     ulimits: 
       nofile:
         soft: "262144"
